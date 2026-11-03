@@ -1,0 +1,26 @@
+# root/.github/workflows/powershell-ci.yml
+name: PowerShell CI
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  parse:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell scripts
+        run: |
+          $scripts = @(Get-ChildItem -Path . -Recurse -File -Filter '*.ps1')
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$($script.FullName): $_" }
+              exit 1
+            }
+          }
+          Write-Host "Parsed $($scripts.Count) PowerShell scripts."
