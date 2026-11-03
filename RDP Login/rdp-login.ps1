@@ -1,51 +1,34 @@
-# Variables
-$rdpserver = "vm-srv01.local"
-$rdpsec = "superSecurePassword"
+# root/RDP Login/rdp-login.ps1
+# Launch RDP without sending credentials to whichever window has focus.
+# Windows Credential Manager / domain SSO handles authentication.
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ComputerName,
 
-# Run mstsc with target
-Start-Process "mstsc.exe" "/v:$rdpserver"
+    [ValidateRange(1, 65535)]
+    [int]$Port = 3389
+)
 
-# Wait up to 10 seconds for the Windows Security window
-$timeout = (Get-Date).AddSeconds(10)
-$found = $false
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
-while ((Get-Date) -lt $timeout) {
-    $win = Get-Process | Where-Object { $_.MainWindowTitle -like "*Windows Security*" }
-    if ($win) {
-        $found = $true
-        break
+# mstsc accepts host:port for non-default ports; IPv6 literals require brackets.
+if ($ComputerName -match '[\r\n"]') {
+    throw 'ComputerName contains unsupported characters.'
+}
+if ($ComputerName -match ':') {
+    if ($ComputerName -notmatch '^\[.*\]$') {
+        throw 'IPv6 addresses must be enclosed in brackets.'
     }
-    Start-Sleep -Milliseconds 500
 }
+$target = if ($Port -eq 3389) { $ComputerName } else { "${ComputerName}:$Port" }
 
-if (-not $found) {
-    [System.Windows.Forms.MessageBox]::Show("Failed to find Remote Desktop Connection")
-    exit
+try {
+    Start-Process -FilePath "$env:SystemRoot\System32\mstsc.exe" -ArgumentList "/v:$target" -ErrorAction Stop
 }
-
-# Send keystrokes (requires Windows Forms)
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.SendKeys]::SendWait($rdpsec)
-Start-Sleep -Milliseconds 100
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-
-# Wait for the RDP session window
-$timeout = (Get-Date).AddSeconds(10)
-$found = $false
-while ((Get-Date) -lt $timeout) {
-    $win = Get-Process | Where-Object { $_.MainWindowTitle -like "*$rdpserver*" }
-    if ($win) {
-        $found = $true
-        break
-    }
-    Start-Sleep -Milliseconds 500
+catch {
+    Write-Error "Unable to launch Remote Desktop Connection: $_"
+    exit 1
 }
-
-if (-not $found) {
-    [System.Windows.Forms.MessageBox]::Show("Failed to find active session")
-    exit
-}
-
-Start-Sleep -Milliseconds 1500
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-exit
